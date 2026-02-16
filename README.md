@@ -1,6 +1,6 @@
 # MS-MDConverter
 
-MarkdownファイルをExcel（.xlsx）またはWord（.docx）に変換するWindows向けコマンドラインツールです。
+MarkdownファイルをExcel（.xlsx）またはWord（.docx）に変換するコマンドラインツールです。
 
 ## 対応するMarkdown要素
 
@@ -14,18 +14,30 @@ MarkdownファイルをExcel（.xlsx）またはWord（.docx）に変換するWi
 
 ## セットアップ
 
-**必要環境:** Python 3.10以上
+Python 3.10以上が必要です。
 
-```
-setup.bat をダブルクリック
+```bash
+python -m venv venv
+
+# Windows
+venv\Scripts\activate
+
+# macOS / Linux
+source venv/bin/activate
+
+pip install -r requirements.txt
 ```
 
-プロキシ環境の場合はセットアップ中にプロキシURLの入力を求められます。
+プロキシ環境の場合:
+
+```bash
+pip install --proxy http://proxy.example.com:8080 -r requirements.txt
+```
 
 ## 使い方
 
-```
-run.bat をダブルクリック
+```bash
+python md_converter.py
 ```
 
 1. 出力形式を選択（Excel / Word）
