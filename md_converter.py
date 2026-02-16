@@ -135,13 +135,16 @@ def _is_special_line(line: str, lines: list[str], i: int) -> bool:
 
 
 def strip_inline_md(text: str) -> str:
-    """Remove inline markdown formatting (bold, italic, code, links)."""
+    """Remove inline markdown formatting (bold, italic, code, links).
+    Converts <br> / <br/> / <br /> tags to newlines."""
+    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
     text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
     text = re.sub(r"__(.+?)__", r"\1", text)
     text = re.sub(r"\*(.+?)\*", r"\1", text)
     text = re.sub(r"_(.+?)_", r"\1", text)
     text = re.sub(r"`(.+?)`", r"\1", text)
     text = re.sub(r"\[(.+?)\]\(.+?\)", r"\1", text)
+    text = re.sub(r'<a\s[^>]*?>(.*?)</a>', r"\1", text, flags=re.IGNORECASE)
     return text
 
 
@@ -224,7 +227,7 @@ def export_to_excel(blocks: list[MDBlock], output_path: str):
                 prefix = "  " * (indent // 2) + "• "
                 cell = ws.cell(row=row, column=1, value=prefix + strip_inline_md(text))
                 cell.font = BODY_FONT
-                cell.alignment = Alignment(wrap_text=True)
+                cell.alignment = Alignment(wrap_text=False)
                 row += 1
             row += 1
 
@@ -247,7 +250,7 @@ def export_to_excel(blocks: list[MDBlock], output_path: str):
         elif block.kind == "paragraph":
             cell = ws.cell(row=row, column=1, value=strip_inline_md(block.content))
             cell.font = BODY_FONT
-            cell.alignment = Alignment(wrap_text=True)
+            cell.alignment = Alignment(wrap_text=False)
             row += 1
 
     # auto-adjust column widths
@@ -287,19 +290,32 @@ def export_to_word(blocks: list[MDBlock], output_path: str):
             num_cols = max(len(r) for r in table_rows)
             table = doc.add_table(rows=len(table_rows), cols=num_cols)
             table.style = "Table Grid"
+            # auto-fit table to window width
+            table.autofit = True
+            from docx.oxml.ns import qn
+            tbl = table._tbl
+            tbl_pr = tbl.tblPr if tbl.tblPr is not None else tbl._add_tblPr()
+            from lxml import etree
+            # Remove fixed width, use auto layout
+            for existing in tbl_pr.findall(qn("w:tblW")):
+                tbl_pr.remove(existing)
+            etree.SubElement(tbl_pr, qn("w:tblW"), attrib={
+                qn("w:w"): "5000", qn("w:type"): "pct",
+            })
             for ri, trow in enumerate(table_rows):
                 for ci, cell_text in enumerate(trow):
                     cell = table.cell(ri, ci)
-                    cell.text = strip_inline_md(cell_text)
+                    text = strip_inline_md(cell_text)
+                    # Handle newlines (from <br>) as separate paragraphs in cell
+                    lines = text.split("\n")
+                    cell.text = lines[0]
+                    for extra_line in lines[1:]:
+                        cell.add_paragraph(extra_line)
                     for paragraph in cell.paragraphs:
-                        paragraph.style.font.size = Pt(9)
+                        for run in paragraph.runs:
+                            run.font.size = Pt(9)
                     if ri == 0:
-                        shading = cell._element
-                        from docx.oxml.ns import qn
-                        tc_pr = shading.get_or_add_tcPr()
-                        shd = openpyxl.xml.functions.SubElement if False else None
-                        # Apply header shading via XML
-                        from lxml import etree
+                        tc_pr = cell._element.get_or_add_tcPr()
                         shading_elm = etree.SubElement(
                             tc_pr, qn("w:shd"),
                             attrib={
@@ -353,7 +369,11 @@ def export_to_word(blocks: list[MDBlock], output_path: str):
             )
 
         elif block.kind == "paragraph":
-            doc.add_paragraph(strip_inline_md(block.content))
+            text = strip_inline_md(block.content)
+            lines = text.split("\n")
+            p = doc.add_paragraph(lines[0])
+            for extra_line in lines[1:]:
+                p.add_run("\n" + extra_line)
 
     doc.save(output_path)
     print(f"Word exported: {output_path}")
